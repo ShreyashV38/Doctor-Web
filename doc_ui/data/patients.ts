@@ -6,6 +6,8 @@ export type CheckIn = {
   risk: "low" | "high";
 };
 
+export type AppointmentStatus = "Pending" | "Confirmed" | "Completed";
+
 export type Patient = {
   id: string;
   name: string;
@@ -13,7 +15,12 @@ export type Patient = {
   condition: string;
   risk: "Low" | "High";
   status: "Active" | "Recovered" | "Critical";
-  nextAppointment?: string; // ISO string for sorting
+  // The active appointment request or scheduled slot
+  appointment?: {
+    date: string; // ISO string
+    type: string; // e.g., "Monthly Check-up", "Emergency"
+    status: AppointmentStatus;
+  };
   painTrend: number[];
   checkIns: CheckIn[];
 };
@@ -26,7 +33,11 @@ export const patients: Patient[] = [
     condition: "Post-surgery recovery",
     risk: "High",
     status: "Critical",
-    nextAppointment: "2024-03-10T09:00:00",
+    appointment: {
+      date: "2024-03-10T09:00:00",
+      type: "Emergency Consult",
+      status: "Pending", // Needs Doctor Action
+    },
     painTrend: [4, 3, 4, 5, 6, 7],
     checkIns: [
       {
@@ -34,13 +45,6 @@ export const patients: Patient[] = [
         painLevel: 7,
         symptoms: ["sleep issues", "difficulty moving"],
         note: "Had sharp pain. Barely slept.",
-        risk: "high",
-      },
-      {
-        date: "Dec 5",
-        painLevel: 6,
-        symptoms: ["fatigue"],
-        note: "Pain increasing slowly.",
         risk: "high",
       },
     ],
@@ -52,17 +56,13 @@ export const patients: Patient[] = [
     condition: "Chronic Lower Back Pain",
     risk: "Low",
     status: "Active",
-    nextAppointment: "2024-03-10T14:30:00",
+    appointment: {
+      date: "2024-03-12T14:30:00",
+      type: "Routine Check-up",
+      status: "Confirmed", // Already on schedule
+    },
     painTrend: [5, 5, 4, 4, 3, 3],
-    checkIns: [
-      {
-        date: "Dec 6",
-        painLevel: 3,
-        symptoms: [],
-        note: "Feeling much better after PT.",
-        risk: "low",
-      },
-    ],
+    checkIns: [],
   },
   {
     id: "emma-wilson",
@@ -71,7 +71,11 @@ export const patients: Patient[] = [
     condition: "Fibromyalgia",
     risk: "High",
     status: "Active",
-    nextAppointment: "2024-03-11T10:00:00",
+    appointment: {
+      date: "2024-03-11T10:00:00",
+      type: "Follow-up",
+      status: "Pending", // Needs Doctor Action
+    },
     painTrend: [6, 7, 8, 7, 8, 9],
     checkIns: [
       {
@@ -90,7 +94,7 @@ export const patients: Patient[] = [
     condition: "Arthritis",
     risk: "Low",
     status: "Active",
-    nextAppointment: "2024-03-12T11:00:00",
+    // No active appointment
     painTrend: [3, 4, 3, 2, 2, 2],
     checkIns: [],
   },

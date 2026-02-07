@@ -64,9 +64,12 @@ export default function PatientCard({ patient }: { patient: Patient }) {
           >
             View Details
           </Link>
-          <button className={`btn-primary ${isHighRisk ? 'bg-rose-600 hover:bg-rose-700 focus:ring-rose-500' : ''}`}>
+          <Link 
+            href={`/consultation/${patient.id}`}
+            className={`btn-primary ${isHighRisk ? 'bg-rose-600 hover:bg-rose-700 focus:ring-rose-500' : ''}`}
+          >
             Start Consultation
-          </button>
+          </Link>
         </div>
       </div>
     </div>

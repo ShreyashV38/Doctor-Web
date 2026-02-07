@@ -1,65 +1,95 @@
 import Link from "next/link";
 import { patients } from "@/data/patients";
 import { notFound } from "next/navigation";
-import RiskAlert from "@/components/RiskAlert";
 import PainChart from "@/components/PainChart";
-import RecentCheckIns from "@/components/RecentCheckIns";
 
-type Props = {
-  params: Promise<{
-    id: string;
-  }>;
-};
-
-export default async function PatientDetailPage({ params }: Props) {
+export default async function PatientProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
   const patient = patients.find((p) => p.id === id);
+
   if (!patient) return notFound();
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <Link
-        href="/dashboard"
-        className="text-sm text-gray-500 hover:text-gray-700"
-      >
-        ← Back to Dashboard
-      </Link>
-
-      <div className="bg-white rounded-xl border p-6">
-        <div className="flex justify-between items-start">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/patients" className="btn-secondary px-3">
+             ← Back
+          </Link>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">
-              {patient.name}
-            </h1>
-            <p className="text-sm text-gray-700">
-              {patient.condition}
-            </p>
-            <p className="text-sm text-gray-600">
-              Age: {patient.age}
-            </p>
+            <h1 className="text-2xl font-bold text-slate-900">{patient.name}</h1>
+            <p className="text-slate-500 text-sm">Patient ID: {patient.id}</p>
           </div>
+        </div>
+        <Link 
+            href={`/consultation/${patient.id}`}
+            className="btn-primary"
+        >
+            Start Video Consultation
+        </Link>
+      </div>
 
-          <span className="px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs font-semibold">
-            {patient.risk.toUpperCase()} RISK
-          </span>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Left Column: Info */}
+        <div className="space-y-6">
+          <div className="card p-6">
+            <h3 className="font-semibold text-slate-900 mb-4 border-b border-slate-100 pb-2">Details</h3>
+            <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                    <span className="text-slate-500">Age</span>
+                    <span className="font-medium">{patient.age}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-slate-500">Condition</span>
+                    <span className="font-medium">{patient.condition}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-slate-500">Status</span>
+                    <span className="font-medium text-blue-600">{patient.status}</span>
+                </div>
+                 <div className="flex justify-between">
+                    <span className="text-slate-500">Risk</span>
+                    <span className={`font-medium ${patient.risk === 'High' ? 'text-rose-600' : 'text-emerald-600'}`}>{patient.risk}</span>
+                </div>
+            </div>
+          </div>
         </div>
 
-        <button className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg">
-          Start Video Consultation
-        </button>
+        {/* Right Column: Clinical Data */}
+        <div className="md:col-span-2 space-y-6">
+           {/* Pain Chart */}
+           <div className="card p-1">
+             <PainChart data={patient.painTrend} />
+           </div>
+
+           {/* Recent Check-ins */}
+           <div className="card p-6">
+              <h3 className="font-semibold text-slate-900 mb-4">Recent Check-ins</h3>
+              {patient.checkIns.length > 0 ? (
+                  <div className="space-y-4">
+                    {patient.checkIns.map((checkIn, idx) => (
+                        <div key={idx} className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="font-semibold text-slate-700">{checkIn.date}</span>
+                                <span className="text-xs font-bold px-2 py-1 bg-white rounded border border-slate-200">Pain: {checkIn.painLevel}/10</span>
+                            </div>
+                            <p className="text-sm text-slate-600 italic">"{checkIn.note}"</p>
+                            <div className="mt-2 flex gap-2">
+                                {checkIn.symptoms.map(s => (
+                                    <span key={s} className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded">{s}</span>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                  </div>
+              ) : (
+                  <p className="text-slate-400 text-sm">No recent check-ins found.</p>
+              )}
+           </div>
+        </div>
       </div>
-
-      <RiskAlert />
-
-      <div className="bg-white border rounded-xl p-6">
-        <h3 className="font-semibold mb-4">
-          Pain Level Trend (Last 7 Days)
-        </h3>
-        <PainChart data={patient.painTrend} />
-      </div>
-
-      <RecentCheckIns checkIns={patient.checkIns} />
     </div>
   );
 }
