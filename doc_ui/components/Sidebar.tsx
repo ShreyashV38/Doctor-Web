@@ -4,28 +4,28 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 
-// 1. Mock Data (Replace this with your real DB fetch or Auth hook later)
+// Mock Data
 const user = {
   name: "Dr. James Wilson",
   role: "Pain Specialist",
-  image: null, // Set to a URL string if they have a photo
+  image: null,
 };
 
-// 2. Smart helper to generate initials (Ignores "Dr." prefix)
 const getInitials = (name: string) => {
-  // Remove titles like "Dr." or "Mr." and extra spaces
   const cleanName = name.replace(/^(Dr\.|Mr\.|Ms\.|Mrs\.)\s+/i, "").trim();
-  
   const parts = cleanName.split(" ");
-  
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  
-  // Take first letter of first name + first letter of last name
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
 export default function Sidebar() {
   const pathname = usePathname();
+  
+  // LOGIC: Hide Sidebar on Auth Pages
+    if (pathname === "/login" || pathname === "/signup" || pathname === "/onboarding") {
+    return null;
+  }
+
   const isActive = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
 
   const getLinkClass = (path: string) =>
@@ -35,15 +35,12 @@ export default function Sidebar() {
         : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
     }`;
 
-  // Calculate initials
   const initials = getInitials(user.name);
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 fixed inset-y-0 left-0 z-10 hidden md:flex flex-col">
-      {/* Branding */}
       <div className="h-48 flex items-center justify-center border-b border-slate-100 bg-slate-50/50 p-6 relative">
         <Link href="/dashboard" className="relative w-full h-full">
-          {/* Ensure logo.png is in your public/ folder */}
           <Image
             src="/logo.png"
             alt="SymptoTrack"
@@ -55,11 +52,10 @@ export default function Sidebar() {
         </Link>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         <Link href="/dashboard" className={getLinkClass("/dashboard")}>
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
           </svg>
           Dashboard
         </Link>
@@ -77,14 +73,12 @@ export default function Sidebar() {
         </Link>
       </nav>
 
-      {/* User Profile Snippet */}
       <div className="p-4 border-t border-slate-200">
         <Link 
           href="/profile" 
           className="flex items-center justify-between w-full p-2 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 hover:shadow-sm transition-all duration-200 group"
         >
           <div className="flex items-center gap-3">
-            {/* Dynamic Avatar */}
             {user.image ? (
                <Image src={user.image} alt={user.name} width={36} height={36} className="rounded-full" />
             ) : (
@@ -102,7 +96,6 @@ export default function Sidebar() {
               </p>
             </div>
           </div>
-          {/* Chevron Icon */}
           <svg className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
