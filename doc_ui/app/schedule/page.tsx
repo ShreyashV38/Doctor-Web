@@ -2,33 +2,97 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getPatientsFromDB, getAppointmentHistory, Patient } from "@/lib/api";
+import { 
+  getPatientsFromDB, 
+  getAppointmentHistory, 
+  updateAppointmentStatus, 
+  rescheduleAppointment,
+  Patient 
+} from "@/lib/api";
 
 type TabType = "upcoming" | "pending" | "history";
 
 export default function SchedulePage() {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
-  
-  // State for data
   const [patients, setPatients] = useState<Patient[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch Data on Load
+  // Reschedule Modal State
+  const [isRescheduling, setIsRescheduling] = useState<string | null>(null);
+  const [rescheduleType, setRescheduleType] = useState<'pending' | 'confirmed'>('pending');
+  const [newDate, setNewDate] = useState("");
+
+  // Load Data
+  async function loadData() {
+    setIsLoading(true);
+    const [patientsData, historyData] = await Promise.all([
+        getPatientsFromDB(),
+        getAppointmentHistory()
+    ]);
+    setPatients(patientsData);
+    setHistory(historyData);
+    setIsLoading(false);
+  }
+
   useEffect(() => {
-    async function loadData() {
-        const [patientsData, historyData] = await Promise.all([
-            getPatientsFromDB(),
-            getAppointmentHistory()
-        ]);
-        setPatients(patientsData);
-        setHistory(historyData);
-        setIsLoading(false);
-    }
     loadData();
   }, []);
 
-  // Filter Logic
+  // --- ACTIONS ---
+
+  const handleAccept = async (appointmentId: string) => {
+    if (!confirm("Confirm this appointment?")) return;
+    
+    const { success } = await updateAppointmentStatus(appointmentId, "Confirmed");
+    if (success) {
+        loadData(); 
+        setActiveTab("upcoming");
+    } else {
+        alert("Failed to accept request.");
+    }
+  };
+
+  const handleDecline = async (appointmentId: string) => {
+    if (!confirm("Are you sure you want to decline this request?")) return;
+
+    const { success } = await updateAppointmentStatus(appointmentId, "Cancelled");
+    if (success) loadData();
+  };
+
+  const openRescheduleModal = (id: string, type: 'pending' | 'confirmed') => {
+    setIsRescheduling(id);
+    setRescheduleType(type);
+  };
+
+  const handleRescheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isRescheduling || !newDate) return;
+
+    // If it's already confirmed, keep it Confirmed. If it was pending, keep it Pending.
+    const newStatus = rescheduleType === 'confirmed' ? 'Confirmed' : 'Pending';
+
+    // Convert local input time to UTC before saving
+    const dateToSave = new Date(newDate).toISOString();
+
+    const { success } = await rescheduleAppointment(
+        isRescheduling, 
+        dateToSave,
+        newStatus
+    );
+
+    if (success) {
+        setIsRescheduling(null);
+        setNewDate("");
+        loadData();
+        alert("Appointment rescheduled successfully.");
+    } else {
+        alert("Failed to reschedule.");
+    }
+  };
+
+  // --- FILTERING ---
+
   const upcomingAppointments = patients
     .filter((p) => p.appointment && p.appointment.status === "Confirmed")
     .sort((a, b) => new Date(a.appointment!.date).getTime() - new Date(b.appointment!.date).getTime());
@@ -37,15 +101,33 @@ export default function SchedulePage() {
     .filter((p) => p.appointment && p.appointment.status === "Pending")
     .sort((a, b) => new Date(a.appointment!.date).getTime() - new Date(b.appointment!.date).getTime());
 
-  // Helper to format date
+  // Helper to force IST (Indian Standard Time)
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
+    
+    // Define options for IST
+    const options: Intl.DateTimeFormatOptions = { 
+        timeZone: 'Asia/Kolkata',
+        hour12: true 
+    };
+    
+    // Extract parts using Intl to ensure IST
+    const day = new Intl.DateTimeFormat('en-US', { ...options, day: 'numeric' }).format(date);
+    const month = new Intl.DateTimeFormat('en-US', { ...options, month: 'short' }).format(date);
+    const time = new Intl.DateTimeFormat('en-US', { ...options, hour: 'numeric', minute: '2-digit' }).format(date);
+    const fullDate = new Intl.DateTimeFormat('en-GB', { ...options }).format(date); // DD/MM/YYYY
+
+    // Check if "Today" in IST
+    const now = new Date();
+    const istNowStr = new Intl.DateTimeFormat('en-IN', options).format(now);
+    const istDateStr = new Intl.DateTimeFormat('en-IN', options).format(date);
+
     return {
-      day: date.getDate(),
-      month: date.toLocaleString('en-US', { month: 'short' }),
-      time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      isToday: new Date().toDateString() === date.toDateString(),
-      fullDate: date.toLocaleDateString('en-GB') 
+      day,
+      month,
+      time,
+      isToday: istNowStr === istDateStr,
+      fullDate
     };
   };
 
@@ -58,7 +140,7 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -133,9 +215,17 @@ export default function SchedulePage() {
                         <p className="text-slate-500 text-sm">{time} • {patient.appointment?.type}</p>
                       </div>
                     </div>
+                    
                     <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => openRescheduleModal(patient.appointment?.id || "", 'confirmed')}
+                        className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50"
+                      >
+                        Reschedule
+                      </button>
+                      
                       <Link href={`/consultation/${patient.id}`} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">Start Call</Link>
-                      <Link href={`/patients/${patient.id}`} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50">Details</Link>
+                      <Link href={`/patients/${patient.id}`} className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200">Details</Link>
                     </div>
                   </div>
                 );
@@ -166,10 +256,29 @@ export default function SchedulePage() {
                         <p className="text-xs text-amber-700 mt-1 font-medium">
                           Proposed: {fullDate} at {time}
                         </p>
+                        {patient.appointment?.notes && <p className="text-xs text-slate-500 mt-1">"{patient.appointment.notes}"</p>}
                       </div>
                     </div>
+                    
                     <div className="flex gap-2">
-                       <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">Accept Request</button>
+                       <button 
+                         onClick={() => openRescheduleModal(patient.appointment?.id || "", 'pending')}
+                         className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+                       >
+                         Reschedule
+                       </button>
+                       <button 
+                         onClick={() => handleAccept(patient.appointment?.id || "")}
+                         className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
+                       >
+                         Accept
+                       </button>
+                       <button 
+                         onClick={() => handleDecline(patient.appointment?.id || "")}
+                         className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                       >
+                         ✕
+                       </button>
                     </div>
                   </div>
                 );
@@ -224,6 +333,45 @@ export default function SchedulePage() {
            </div>
         )}
       </div>
+
+      {/* === RESCHEDULE MODAL === */}
+      {isRescheduling && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Reschedule Appointment</h3>
+                <p className="text-sm text-slate-500 mb-4">
+                    {rescheduleType === 'confirmed' ? "This appointment is currently confirmed. Moving it will keep it confirmed." : "Propose a new time for this request."}
+                </p>
+                <form onSubmit={handleRescheduleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">New Date & Time</label>
+                        <input 
+                            type="datetime-local" 
+                            required
+                            value={newDate}
+                            onChange={(e) => setNewDate(e.target.value)}
+                            className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button 
+                            type="button"
+                            onClick={() => { setIsRescheduling(null); setNewDate(""); }}
+                            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            type="submit"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                        >
+                            Confirm New Time
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
     </div>
   );
 }

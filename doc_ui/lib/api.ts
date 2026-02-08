@@ -7,10 +7,13 @@ export type Patient = {
   condition: string;
   risk: "Low" | "High";
   status: "Active" | "Recovered" | "Critical";
+  privateNotes?: string;
   appointment?: {
+    id: string;      
     date: string;
     type: string;
     status: "Pending" | "Confirmed" | "Completed";
+    notes?: string;   
   };
   painTrend: number[];
   checkIns: any[];
@@ -66,9 +69,11 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
         risk: profile?.risk_level === 'High' ? 'High' : 'Low',
         status: profile?.status || 'Active',
         appointment: nextAppt ? {
+          id: nextAppt.id,
           date: nextAppt.date,
           type: nextAppt.type || "Consultation",
-          status: nextAppt.status as any
+          status: nextAppt.status as any,
+          notes: nextAppt.notes
         } : undefined,
         painTrend: painTrend.length > 0 ? painTrend : [0],
         checkIns: userSymptoms.slice(0, 3).map(s => ({
@@ -84,6 +89,11 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
 
 // 2. Fetch Single Patient (For Profile Page)
 export async function getPatientById(id: string): Promise<Patient | null> {
+  // 1. Get current logged-in doctor
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  if (!currentUser) return null;
+
+  // 2. Fetch User & Profile
   const { data: user, error } = await supabase
     .from('users')
     .select(`
@@ -95,23 +105,22 @@ export async function getPatientById(id: string): Promise<Patient | null> {
 
   if (error || !user) return null;
 
-  const { data: symptoms } = await supabase
-    .from('symptoms')
-    .select('*')
-    .eq('user_id', id)
-    .order('timestamp', { ascending: false });
-
-  const { data: appointments } = await supabase
-    .from('appointments')
-    .select('*')
+  // 3. Fetch the Private Note for this Doctor-Patient pair
+  const { data: noteData } = await supabase
+    .from('doctor_notes')
+    .select('content')
     .eq('patient_id', id)
-    .order('date', { ascending: true });
+    .eq('doctor_id', currentUser.id)
+    .single();
+
+  // ... (Keep existing Symptoms & Appointments fetching logic here) ...
+  const { data: symptoms } = await supabase.from('symptoms').select('*').eq('user_id', id).order('timestamp', { ascending: false }).limit(10);
+  const { data: appointments } = await supabase.from('appointments').select('*').eq('patient_id', id).eq('status', 'Confirmed').gte('date', new Date().toISOString()).order('date', { ascending: true }).limit(1);
 
   const profileData: any = user.patient_profiles;
   const profile = Array.isArray(profileData) ? profileData[0] : profileData;
-
-  const painTrend = symptoms?.map(s => s.painlvl).slice(0, 14).reverse() || [];
-  const nextAppt = appointments?.find(a => new Date(a.date) > new Date());
+  const painTrend = symptoms?.map(s => s.painlvl).slice(0, 7).reverse() || [0];
+  const nextAppt = appointments && appointments.length > 0 ? appointments[0] : null;
 
   return {
     id: user.id,
@@ -120,17 +129,24 @@ export async function getPatientById(id: string): Promise<Patient | null> {
     condition: profile?.condition || "General Checkup",
     risk: profile?.risk_level === 'High' ? 'High' : 'Low',
     status: profile?.status || "Active",
+    
+    // MAP THE NEW NOTE DATA
+    privateNotes: noteData?.content || "", 
+    
     appointment: nextAppt ? {
+        id: nextAppt.id,
         date: nextAppt.date,
         type: nextAppt.type,
-        status: nextAppt.status
+        status: nextAppt.status as any,
+        notes: nextAppt.notes
     } : undefined,
     painTrend: painTrend.length > 0 ? painTrend : [0],
-    checkIns: symptoms?.map(s => ({
-        date: new Date(s.timestamp).toLocaleDateString(),
+    checkIns: symptoms?.slice(0, 5).map(s => ({
+        date: new Date(s.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        time: new Date(s.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute:'2-digit', timeZone: 'Asia/Kolkata' }),
         painLevel: s.painlvl,
         symptoms: s.symptoms ? s.symptoms.split(',') : [],
-        note: s.description || "",
+        note: s.description || "No notes provided.",
         risk: s.painlvl >= 8 ? "high" : "low"
     })) || []
   };
@@ -239,20 +255,42 @@ export async function getDoctorProfile() {
   };
 }
 
-// 6. Update Doctor Profile (For Profile Page Edits)
+// 6. Update Doctor Profile (With Debug Logs)
 export async function updateDoctorProfile(profileData: any) {
+  console.log("🚀 updateDoctorProfile called with:", profileData);
+
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not logged in" };
+  if (!user) {
+    console.error("❌ No user logged in");
+    return { error: "Not logged in" };
+  }
+  console.log("👤 Authenticated User ID:", user.id);
 
-  // 1. Update Users Table (Name)
-  const { error: userError } = await supabase
+  // 1. Update Users Table
+  const userData = {
+    name: profileData.name,
+    phone_number: profileData.phone 
+  };
+  console.log("Attempting to update 'users' table with:", userData);
+
+  const { data: userUpdateData, error: userError } = await supabase
     .from('users')
-    .update({ name: profileData.name })
-    .eq('id', user.id);
+    .update(userData)
+    .eq('id', user.id)
+    .select(); // <--- Important: Returns the updated row so we know it worked
 
-  if (userError) return { error: userError.message };
+  if (userError) {
+    console.error("❌ User Update Failed:", userError.message);
+    return { error: userError.message };
+  }
+  
+  if (userUpdateData.length === 0) {
+    console.warn("⚠️ Warning: No rows updated in 'users' table. Check RLS policies!");
+  } else {
+    console.log("✅ Users Table Updated Successfully.");
+  }
 
-  // 2. Update Doctor Profiles Table (All Fields)
+  // 2. Update Doctor Profiles Table
   const doctorData = {
     job_title: profileData.role,           
     experience: profileData.experience,
@@ -265,16 +303,32 @@ export async function updateDoctorProfile(profileData: any) {
     working_days: profileData.workingDays,
     working_hours: profileData.time,
     consultation_mode: profileData.mode,
-    specialization: profileData.specialization || "General", // Ensure not null
-    bio: profileData.bio
+    specialization: profileData.specialization || "General",
+    bio: profileData.bio,
+    status: profileData.status
   };
+  console.log("Attempting to update 'doctor_profiles' table with:", doctorData);
 
-  const { error: docError } = await supabase
+  const { data: docUpdateData, error: docError } = await supabase
     .from('doctor_profiles')
     .update(doctorData)
-    .eq('user_id', user.id);
+    .eq('user_id', user.id)
+    .select(); // <--- Important: Returns the updated row
 
-  return { error: docError?.message };
+  if (docError) {
+    console.error("❌ Profile Update Failed:", docError.message);
+    return { error: docError.message };
+  }
+
+  if (docUpdateData.length === 0) {
+    console.warn("⚠️ Warning: No rows updated in 'doctor_profiles'. Possible causes:");
+    console.warn("   1. RLS Policy prevents UPDATE.");
+    console.warn("   2. No row exists for this user_id (needs INSERT not UPDATE).");
+  } else {
+    console.log("✅ Doctor Profiles Table Updated Successfully.");
+  }
+
+  return { success: true };
 }
 
 // 7. Complete Onboarding (Doctor Only - Initial Setup)
@@ -323,5 +377,59 @@ export async function completeOnboarding(data: {
     
   if (docError) return { error: docError.message };
 
+  return { success: true };
+}
+
+// 8. Update Appointment Status (Accept/Cancel)
+export async function updateAppointmentStatus(id: string, status: 'Confirmed' | 'Cancelled') {
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', id);
+
+  if (error) {
+    console.error("Error updating appointment:", error);
+    return { error: error.message };
+  }
+  return { success: true };
+}
+
+// 9. Reschedule Appointment (Updated to allow keeping status)
+export async function rescheduleAppointment(id: string, newDate: string, status: 'Pending' | 'Confirmed' = 'Pending') {
+  const { error } = await supabase
+    .from('appointments')
+    .update({ 
+        date: newDate,
+        status: status 
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error("Error rescheduling:", error);
+    return { error: error.message };
+  }
+  return { success: true };
+}
+
+
+// 10. Save Doctor's Private Notes (Separate Table Upsert)
+export async function savePatientNotes(patientId: string, notes: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) return { error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from('doctor_notes')
+    .upsert({ 
+        patient_id: patientId,
+        doctor_id: user.id,
+        content: notes,
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'patient_id, doctor_id' }); // Uses the unique constraint we added
+
+  if (error) {
+    console.error("Error saving notes:", error);
+    return { error: error.message };
+  }
   return { success: true };
 }
