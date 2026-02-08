@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { patients } from "@/data/patients";
+import { getPatientById } from "@/lib/api";
 import { notFound } from "next/navigation";
 
 export default async function ConsultationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const patient = patients.find((p) => p.id === id);
+  
+  // Fetch Real Data
+  const patient = await getPatientById(id);
 
   if (!patient) return notFound();
 

@@ -1,41 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { patients } from "@/data/patients";
-
-// Mock data for history (since the main patient data only tracks the *next* appointment)
-const mockHistory = [
-  {
-    id: "hist-1",
-    patientId: "james-rod",
-    name: "James Rodriguez",
-    date: "2024-02-14T10:00:00",
-    type: "Initial Consultation",
-    status: "Completed",
-  },
-  {
-    id: "hist-2",
-    patientId: "mike-chen",
-    name: "Michael Chen",
-    date: "2024-02-01T14:30:00",
-    type: "Physiotherapy Review",
-    status: "Completed",
-  },
-  {
-    id: "hist-3",
-    patientId: "sarah-johnson",
-    name: "Sarah Johnson",
-    date: "2024-01-20T09:15:00",
-    type: "Emergency Check-in",
-    status: "Completed",
-  },
-];
+import { getPatientsFromDB, getAppointmentHistory, Patient } from "@/lib/api";
 
 type TabType = "upcoming" | "pending" | "history";
 
 export default function SchedulePage() {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
+  
+  // State for data
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch Data on Load
+  useEffect(() => {
+    async function loadData() {
+        const [patientsData, historyData] = await Promise.all([
+            getPatientsFromDB(),
+            getAppointmentHistory()
+        ]);
+        setPatients(patientsData);
+        setHistory(historyData);
+        setIsLoading(false);
+    }
+    loadData();
+  }, []);
 
   // Filter Logic
   const upcomingAppointments = patients
@@ -46,7 +37,7 @@ export default function SchedulePage() {
     .filter((p) => p.appointment && p.appointment.status === "Pending")
     .sort((a, b) => new Date(a.appointment!.date).getTime() - new Date(b.appointment!.date).getTime());
 
-  // Helper to format date nicely
+  // Helper to format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return {
@@ -54,33 +45,35 @@ export default function SchedulePage() {
       month: date.toLocaleString('en-US', { month: 'short' }),
       time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
       isToday: new Date().toDateString() === date.toDateString(),
-      // UPDATED: Forces dd/mm/yyyy format
       fullDate: date.toLocaleDateString('en-GB') 
     };
   };
 
+  if (isLoading) {
+    return (
+        <div className="flex h-96 items-center justify-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+        </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header & Controls */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Schedule Management</h1>
           <p className="text-slate-500 text-sm">Manage appointments and requests</p>
         </div>
-        <button className="btn-secondary text-xs">
-          Sync with Google Calendar
-        </button>
       </div>
 
-      {/* Tabs Navigation */}
+      {/* Tabs */}
       <div className="border-b border-slate-200">
         <nav className="flex gap-6" aria-label="Tabs">
           <button
             onClick={() => setActiveTab("upcoming")}
             className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-              activeTab === "upcoming"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              activeTab === "upcoming" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             Upcoming
@@ -92,9 +85,7 @@ export default function SchedulePage() {
           <button
             onClick={() => setActiveTab("pending")}
             className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-              activeTab === "pending"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              activeTab === "pending" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             Pending Requests
@@ -108,9 +99,7 @@ export default function SchedulePage() {
           <button
             onClick={() => setActiveTab("history")}
             className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
-              activeTab === "history"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              activeTab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
             History
@@ -118,10 +107,10 @@ export default function SchedulePage() {
         </nav>
       </div>
 
-      {/* Tab Content Areas */}
+      {/* Content */}
       <div className="space-y-4">
         
-        {/* === UPCOMING TAB === */}
+        {/* === UPCOMING === */}
         {activeTab === "upcoming" && (
           <div className="bg-white border border-slate-200 rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.02)] divide-y divide-slate-100">
             {upcomingAppointments.length === 0 ? (
@@ -145,8 +134,8 @@ export default function SchedulePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Link href={`/consultation/${patient.id}`} className="btn-primary py-1.5 text-xs">Start Call</Link>
-                      <Link href={`/patients/${patient.id}`} className="btn-secondary py-1.5 text-xs">Details</Link>
+                      <Link href={`/consultation/${patient.id}`} className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">Start Call</Link>
+                      <Link href={`/patients/${patient.id}`} className="px-4 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50">Details</Link>
                     </div>
                   </div>
                 );
@@ -155,12 +144,12 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* === PENDING TAB === */}
+        {/* === PENDING === */}
         {activeTab === "pending" && (
           <div className="space-y-4">
             {pendingRequests.length === 0 ? (
                <div className="p-12 text-center border border-dashed border-slate-300 rounded-xl text-slate-500">
-                 No pending requests. Good job!
+                 No pending requests.
                </div>
             ) : (
               pendingRequests.map((patient) => {
@@ -174,13 +163,12 @@ export default function SchedulePage() {
                       <div>
                         <h3 className="font-semibold text-slate-900">{patient.name}</h3>
                         <p className="text-sm text-slate-600">Request: <span className="font-medium">{patient.appointment?.type}</span></p>
-                        <p className="text-xs text-amber-700 mt-1 font-medium" suppressHydrationWarning>
+                        <p className="text-xs text-amber-700 mt-1 font-medium">
                           Proposed: {fullDate} at {time}
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                       <button className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Reschedule</button>
                        <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">Accept Request</button>
                     </div>
                   </div>
@@ -190,7 +178,7 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* === HISTORY TAB === */}
+        {/* === HISTORY === */}
         {activeTab === "history" && (
            <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
              <table className="w-full text-left text-sm text-slate-600">
@@ -204,29 +192,33 @@ export default function SchedulePage() {
                  </tr>
                </thead>
                <tbody className="divide-y divide-slate-200">
-                 {mockHistory.map((item) => {
-                    const { fullDate, time } = formatDate(item.date);
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-100/50">
-                        <td className="px-6 py-4">
-                          <p className="font-medium text-slate-900" suppressHydrationWarning>{fullDate}</p>
-                          <p className="text-xs text-slate-500">{time}</p>
-                        </td>
-                        <td className="px-6 py-4 font-medium">{item.name}</td>
-                        <td className="px-6 py-4">{item.type}</td>
-                        <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
-                            {item.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <Link href={`/patients/${item.patientId}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
-                            View Notes
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                 })}
+                 {history.length === 0 ? (
+                     <tr><td colSpan={5} className="px-6 py-4 text-center text-slate-500">No history found.</td></tr>
+                 ) : (
+                    history.map((item) => {
+                        const { fullDate, time } = formatDate(item.date);
+                        return (
+                        <tr key={item.id} className="hover:bg-slate-100/50">
+                            <td className="px-6 py-4">
+                            <p className="font-medium text-slate-900">{fullDate}</p>
+                            <p className="text-xs text-slate-500">{time}</p>
+                            </td>
+                            <td className="px-6 py-4 font-medium">{item.name}</td>
+                            <td className="px-6 py-4">{item.type}</td>
+                            <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+                                {item.status}
+                            </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                            <Link href={`/patients/${item.patientId}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
+                                View Notes
+                            </Link>
+                            </td>
+                        </tr>
+                        );
+                    })
+                 )}
                </tbody>
              </table>
            </div>

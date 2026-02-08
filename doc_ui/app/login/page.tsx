@@ -52,7 +52,7 @@ export default function LoginPage() {
            <div className="text-center max-w-md">
              <h2 className="text-3xl font-bold text-white mb-3">Seamless Patient Care</h2>
              <p className="text-slate-400 text-lg leading-relaxed">
-               Monitor vitals, manage appointments, and track recovery in real-time with AI-driven insights.
+               Monitor Patients, manage appointments, and track recovery in real-time.
              </p>
            </div>
         </div>

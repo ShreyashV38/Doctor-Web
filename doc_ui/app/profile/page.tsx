@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getDoctorProfile, updateDoctorProfile } from "@/lib/api";
 
 // Pre-defined options for dropdowns
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -14,25 +15,53 @@ const GENDERS = ["Male", "Female", "Other", "Prefer not to say"];
 
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // Main profile state
+  // Main profile state (Initialized Empty)
   const [profile, setProfile] = useState({
-    name: "Dr. James Wilson",
-    role: "Senior Consultant – Pain Management",
-    experience: "15+ years of clinical experience",
+    name: "",
+    role: "",
+    experience: "",
     status: "Active",
-    email: "james.wilson@hospital.com",
-    phone: "+91 98765 43210",
+    email: "",
+    phone: "",
     gender: "Male",
-    location: "Goa, India",
-    department: "Pain Management",
-    hospital: "City Care Medical Center",
-    qualifications: "MBBS, MD (Anesthesiology)",
-    license: "MED-IND-45821",
+    location: "",
+    department: "",
+    hospital: "",
+    qualifications: "",
+    license: "",
     workingDays: "Monday – Friday",
-    time: "10:00 AM – 6:00 PM",
+    time: "09:00 AM – 05:00 PM",
     mode: "In-person & Video",
   });
+
+  // Load Data from Supabase
+  useEffect(() => {
+    async function loadData() {
+      const data = await getDoctorProfile();
+      if (data) {
+        setProfile(prev => ({ ...prev, ...data }));
+      }
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
+
+  // Save Data to Supabase
+  const handleSave = async () => {
+    setIsSaving(true);
+    const { error } = await updateDoctorProfile(profile);
+    
+    if (error) {
+        alert("Failed to save profile.");
+        console.error(error);
+    } else {
+        setIsEditing(false);
+    }
+    setIsSaving(false);
+  };
 
   // Generic handler for simple text/select inputs
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -107,12 +136,20 @@ export default function ProfilePage() {
           )
         ) : (
           <p className="text-sm font-medium text-slate-900 py-2.5 border border-transparent">
-            {value}
+            {value || "-"}
           </p>
         )}
       </div>
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -131,11 +168,28 @@ export default function ProfilePage() {
         <div className="flex gap-3">
           {isEditing ? (
             <>
-              <button onClick={() => setIsEditing(false)} className="btn-secondary text-slate-600">Cancel</button>
-              <button onClick={() => setIsEditing(false)} className="btn-primary">Save Changes</button>
+              <button 
+                onClick={() => setIsEditing(false)} 
+                className="btn-secondary text-slate-600"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
             </>
           ) : (
-            <button onClick={() => setIsEditing(true)} className="btn-secondary text-blue-600 border-blue-200 hover:bg-blue-50">Edit Profile</button>
+            <button 
+                onClick={() => setIsEditing(true)} 
+                className="btn-secondary text-blue-600 border-blue-200 hover:bg-blue-50"
+            >
+                Edit Profile
+            </button>
           )}
         </div>
       </div>
@@ -144,7 +198,7 @@ export default function ProfilePage() {
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-6">
           <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-2xl font-bold border-4 border-white shadow-sm ring-1 ring-slate-100">
-            JW
+            {profile.name ? profile.name.charAt(0) : "U"}
           </div>
           <div className="flex-1">
             {/* NAME IS NOT EDITABLE */}

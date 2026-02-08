@@ -1,12 +1,51 @@
-import { getPatientsFromDB } from "@/lib/api"; // Import the new function
+"use client"; // <--- This is the magic line that fixes the Auth issue
+
+import { useEffect, useState } from "react";
+import { getPatientsFromDB, getPendingAppointments, Patient } from "@/lib/api";
 import DashboardStats from "@/components/DashboardStats";
 import AppointmentRequests from "@/components/AppointmentRequests";
 import DashboardPatientList from "@/components/DashboardPatientList";
 
-// Async Server Component
-export default async function Dashboard() {
-  // Fetch real data from Supabase
-  const patients = await getPatientsFromDB();
+export default function Dashboard() {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        console.log("Fetching Dashboard Data...");
+        
+        // Fetch both Patients and Appointments in parallel
+        const [patientsData, requestsData] = await Promise.all([
+          getPatientsFromDB(),
+          getPendingAppointments()
+        ]);
+
+        console.log("Patients Loaded:", patientsData.length);
+        setPatients(patientsData);
+        setRequests(requestsData);
+      } catch (error) {
+        console.error("Failed to fetch dashboard data", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    // Trigger the fetch
+    fetchData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="text-slate-500 font-medium animate-pulse">Loading Patient Data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -18,14 +57,13 @@ export default async function Dashboard() {
         </div>
       </div>
 
-      {/* Stats Row - Pass the real data */}
+      {/* Stats Row */}
       <DashboardStats patients={patients} />
 
-      {/* Action Items */}
-      {/* You can update AppointmentRequests similarly later if needed */}
-      <AppointmentRequests />
+      {/* Action Items (Appointments) */}
+      <AppointmentRequests requests={requests} />
 
-      {/* Sortable Patient List - Pass the real data */}
+      {/* Sortable Patient List */}
       <DashboardPatientList patients={patients} />
     </div>
   );

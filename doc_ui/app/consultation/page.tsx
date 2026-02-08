@@ -1,58 +1,91 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { patients } from "@/data/patients";
-import { notFound } from "next/navigation";
+import { getPatientsFromDB, Patient } from "@/lib/api";
 
-export default async function ConsultationPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const patient = patients.find((p) => p.id === id);
+export default function ConsultationListPage() {
+  const [upcoming, setUpcoming] = useState<Patient[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  if (!patient) return notFound();
+  useEffect(() => {
+    async function loadData() {
+      // Fetch all patients and filter for confirmed appointments
+      const patients = await getPatientsFromDB();
+      const confirmed = patients.filter(
+        p => p.appointment && p.appointment.status === "Confirmed"
+      );
+      setUpcoming(confirmed);
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
+
+  if (isLoading) {
+    return (
+        <div className="flex h-96 items-center justify-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+        </div>
+    );
+  }
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Consultation: {patient.name}
-          </h1>
-          <p className="text-sm text-slate-500">Duration: 00:00 • {patient.condition}</p>
+          <h1 className="text-2xl font-bold text-slate-900">Consultation Room</h1>
+          <p className="text-slate-500 text-sm">Select a patient to start a remote session</p>
         </div>
-        <Link href="/dashboard" className="inline-flex items-center justify-center px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg text-rose-600 hover:bg-rose-50 border-rose-200">
-          End Consultation
-        </Link>
       </div>
 
-      {/* Main Video Area */}
-      <div className="flex-1 bg-slate-900 rounded-2xl relative overflow-hidden shadow-2xl mb-4">
-        {/* Remote Video Placeholder */}
-        <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-                <div className="w-24 h-24 rounded-full bg-slate-700 mx-auto mb-4 flex items-center justify-center text-3xl text-slate-400 font-bold">
-                    {patient.name.charAt(0)}
-                </div>
-                <p className="text-slate-400 text-lg">Waiting for {patient.name} to join...</p>
+      {upcoming.length === 0 ? (
+         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </div>
-        </div>
+            <h3 className="text-lg font-bold text-slate-900">No Upcoming Consultations</h3>
+            <p className="text-slate-500 mt-2">You don't have any confirmed appointments right now.</p>
+            <Link href="/schedule" className="inline-block mt-4 text-blue-600 font-medium hover:underline">
+                Check Schedule &rarr;
+            </Link>
+         </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {upcoming.map((patient) => (
+            <div key={patient.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                   {patient.name.charAt(0)}
+                </div>
+                <div>
+                   <h3 className="font-bold text-slate-900">{patient.name}</h3>
+                   <p className="text-xs text-slate-500">{patient.condition}</p>
+                </div>
+              </div>
+              
+              <div className="bg-slate-50 rounded-lg p-3 mb-6 border border-slate-100">
+                 <div className="flex justify-between items-center text-sm mb-1">
+                    <span className="text-slate-500">Scheduled:</span>
+                    <span className="font-semibold text-slate-900">
+                        {new Date(patient.appointment!.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Type:</span>
+                    <span className="font-medium text-blue-600">{patient.appointment!.type}</span>
+                 </div>
+              </div>
 
-        {/* Local Video Preview */}
-        <div className="absolute bottom-6 right-6 w-48 h-36 bg-slate-800 rounded-xl border border-slate-700 shadow-lg flex items-center justify-center">
-             <p className="text-xs text-slate-500">You</p>
+              <Link 
+                href={`/consultation/${patient.id}`}
+                className="block w-full text-center py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors"
+              >
+                Join Video Call
+              </Link>
+            </div>
+          ))}
         </div>
-
-        {/* Controls Overlay */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4 p-3 bg-slate-800/80 backdrop-blur-sm rounded-full border border-slate-700/50">
-            <button className="p-3 rounded-full bg-slate-700 text-white hover:bg-slate-600">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-            </button>
-            <button className="p-3 rounded-full bg-slate-700 text-white hover:bg-slate-600">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-            </button>
-            <button className="p-3 rounded-full bg-rose-600 text-white hover:bg-rose-700">
-                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6.697M18 8l2 2m0 0l2 2m-2-2l-2 2" /></svg>
-            </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
