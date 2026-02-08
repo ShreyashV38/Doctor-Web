@@ -1,9 +1,13 @@
-import { patients } from "@/data/patients";
+import { getPatientsFromDB } from "@/lib/api"; // Import the new function
 import DashboardStats from "@/components/DashboardStats";
 import AppointmentRequests from "@/components/AppointmentRequests";
 import DashboardPatientList from "@/components/DashboardPatientList";
 
-export default function Dashboard() {
+// Async Server Component
+export default async function Dashboard() {
+  // Fetch real data from Supabase
+  const patients = await getPatientsFromDB();
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
@@ -14,13 +18,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stats Row */}
-      <DashboardStats />
+      {/* Stats Row - Pass the real data */}
+      <DashboardStats patients={patients} />
 
       {/* Action Items */}
+      {/* You can update AppointmentRequests similarly later if needed */}
       <AppointmentRequests />
 
-      {/* Sortable Patient List */}
+      {/* Sortable Patient List - Pass the real data */}
       <DashboardPatientList patients={patients} />
     </div>
   );

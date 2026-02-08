@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -25,16 +26,44 @@ export default function OnboardingPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      router.push("/dashboard");
-    }, 1500);
+
+    try {
+        // 1. Get current user
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) throw new Error("No authenticated user found.");
+
+        // 2. Insert into 'doctor_profiles' table
+        const { error: dbError } = await supabase
+            .from('doctor_profiles')
+            .insert([
+                {
+                    user_id: user.id, // Links to users table
+                    specialization: formData.specialization,
+                    hospital: formData.hospital,
+                    experience: formData.experience,
+                    license_id: formData.license,
+                    phone_number: formData.phone,
+                    gender: formData.gender,
+                    // 'role'/title could also go here if added to schema, or mapped to existing columns
+                }
+            ]);
+
+        if (dbError) throw dbError;
+
+        router.push("/dashboard");
+
+    } catch (error: any) {
+        console.error("Onboarding Error:", error);
+        alert(error.message || "Failed to save profile.");
+    } finally {
+        setIsLoading(false);
+    }
   };
 
+  // ... (Your JSX Return remains exactly the same)
   return (
     <div className="w-full min-h-screen flex bg-white font-sans text-slate-900">
-      
-      {/* LEFT SIDE */}
+      {/* ... KEEP YOUR EXISTING UI CODE HERE ... */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 relative flex-col justify-between p-12 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-slate-900 z-0"></div>
         <div className="absolute inset-0 opacity-10 z-0" style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '32px 32px' }}></div>
@@ -53,7 +82,6 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* RIGHT SIDE */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 md:px-20 relative bg-white py-12 lg:py-0 overflow-y-auto">
          
          <div className="max-w-xl mx-auto w-full">
