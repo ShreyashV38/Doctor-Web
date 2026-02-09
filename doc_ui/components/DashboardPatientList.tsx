@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Patient } from "@/data/patients";
+import Link from "next/link";
+import { Patient } from "@/lib/api"; 
 import PatientCard from "@/components/PatientCard";
 
 type SortOption = "risk" | "name" | "condition";
@@ -14,16 +15,31 @@ export default function DashboardPatientList({ patients }: { patients: Patient[]
     switch (sortBy) {
       case "risk":
         // Sort by Risk (High first), then by Name
-        if (a.risk === b.risk) return a.name.localeCompare(b.name);
-        return a.risk === "High" ? -1 : 1;
+        const riskScore = (r: string) => r === 'High' ? 3 : r === 'Moderate' ? 2 : 1;
+        const scoreA = riskScore(a.risk_level || a.risk || 'Low');
+        const scoreB = riskScore(b.risk_level || b.risk || 'Low');
+        
+        if (scoreA !== scoreB) return scoreB - scoreA; // High to Low
+        return a.name.localeCompare(b.name);
+        
       case "name":
         return a.name.localeCompare(b.name);
+        
       case "condition":
-        return a.condition.localeCompare(b.condition);
+        return (a.condition || "").localeCompare(b.condition || "");
+        
       default:
         return 0;
     }
   });
+
+  if (patients.length === 0) {
+     return (
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500">
+           No assigned patients found.
+        </div>
+     );
+  }
 
   return (
     <div>
@@ -59,11 +75,18 @@ export default function DashboardPatientList({ patients }: { patients: Patient[]
         </div>
       </div>
 
-      {/* The List */}
+      {/* The List (Grid of Cards) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {sortedPatients.map((patient) => (
           <PatientCard key={patient.id} patient={patient} />
         ))}
+      </div>
+      
+      {/* View All Link */}
+      <div className="mt-6 text-center">
+         <Link href="/patients" className="text-sm text-blue-600 font-medium hover:underline">
+            View All Patients
+         </Link>
       </div>
     </div>
   );
