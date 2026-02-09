@@ -77,12 +77,12 @@ export default function PatientsPage() {
                     <td className="px-6 py-4">
                         <span
                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            patient.risk === "High"
+                            patient.risk_level === "High"
                             ? "bg-rose-50 text-rose-700"
                             : "bg-emerald-50 text-emerald-700"
                         }`}
                         >
-                        {patient.risk}
+                        {patient.risk_level}
                         </span>
                     </td>
                     <td className="px-6 py-4 text-right">

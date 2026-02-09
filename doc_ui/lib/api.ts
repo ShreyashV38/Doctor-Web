@@ -1,6 +1,17 @@
 import { supabase } from "./supabase";
 
-// 1. Define Interfaces (Updated to include missing fields)
+// 1. Interfaces
+export interface CheckIn {
+  id?: string;
+  date: string;
+  time?: string;
+  painLevel: number;
+  symptoms: string[];
+  note: string;
+  risk: string;           
+  aiExplanation?: string; 
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -12,21 +23,8 @@ export interface Patient {
   avatar: string;
   lastVisit?: string;
   nextAppointment?: string;
-  
-  // These are for the detailed profile view (Optional in list view)
   painTrend?: number[];
-  checkIns?: {
-    date: string;
-    time?: string;
-    painLevel: number;
-    symptoms: string[];
-    note: string;
-    risk: string;
-  }[];
-  
-  // Added for compatibility with older components if they use 'risk' instead of 'risk_level'
-  risk?: 'Low' | 'Moderate' | 'High'; 
-
+  checkIns?: CheckIn[]; 
   appointment?: {
       id: string;
       date: string;
@@ -36,16 +34,15 @@ export interface Patient {
   }
 }
 
-// 2. Fetch Patients Assigned to Logged-in Doctor
+// 2. Fetch Patients (Fixed: STRICT Dynamic Risk)
 export async function getPatientsFromDB(): Promise<Patient[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  // Fetch users + profiles
   const { data: usersData, error } = await supabase
     .from('users')
     .select(`
-      id, name, email, avatar_url,  
+      id, name, email, avatar_url,
       patient_profiles!patient_profiles_user_id_fkey!inner (*) 
     `) 
     .eq('role', 'patient')
@@ -56,10 +53,9 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
     return [];
   }
 
-  // Helper to fetch extra data for dashboard
   const patientIds = usersData.map(u => u.id);
-  
-  // Fetch latest symptoms (for trend) and appointments
+
+  // Fetch latest symptoms (Critical for dynamic risk)
   const { data: symptoms } = await supabase
     .from('symptoms')
     .select('*')
@@ -77,8 +73,25 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
     const profileData: any = user.patient_profiles;
     const profile = Array.isArray(profileData) ? profileData[0] : profileData;
     
-    // Logic for trend/symptoms
+    // Get Symptoms for this user
     const userSymptoms = symptoms?.filter(s => s.user_id === user.id) || [];
+    const latestSymptom = userSymptoms[0]; // The most recent check-in
+    
+    // --- FIXED DYNAMIC RISK LOGIC ---
+    let calculatedRisk = profile?.risk_level || 'Low'; // Fallback if no symptoms
+    
+    if (latestSymptom) {
+        // STRICT OVERRIDE: Latest symptom dictates the card status 100%
+        if (latestSymptom.risk_level === 'High' || latestSymptom.painlvl >= 8) {
+            calculatedRisk = 'High';
+        } else if (latestSymptom.risk_level === 'Moderate' || latestSymptom.painlvl >= 5) {
+            calculatedRisk = 'Moderate';
+        } else {
+            // If latest is Low, Force it to Low (even if profile was High)
+            calculatedRisk = 'Low';
+        }
+    }
+
     const painTrend = userSymptoms.map(s => s.painlvl).slice(0, 7).reverse();
     const nextAppt = appointments?.find(a => a.patient_id === user.id);
 
@@ -87,14 +100,13 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
         name: user.name,
         age: profile?.age || 0,
         condition: profile?.condition || "General Checkup",
-        risk_level: (profile?.risk_level === 'High' || profile?.risk_level === 'Moderate') ? profile.risk_level : 'Low',
-        // Polyfill 'risk' for compatibility
-        risk: (profile?.risk_level === 'High' || profile?.risk_level === 'Moderate') ? profile.risk_level : 'Low',
+        
+        // Use our strictly calculated risk
+        risk_level: calculatedRisk,
         
         status: profile?.status || 'Active',
         trend: profile?.trend || 'stable',
         avatar: user.avatar_url || `https://ui-avatars.com/api/?name=${user.name}&background=random`,
-        
         appointment: nextAppt ? {
           id: nextAppt.id,
           date: nextAppt.date,
@@ -102,31 +114,27 @@ export async function getPatientsFromDB(): Promise<Patient[]> {
           status: nextAppt.status,
           notes: nextAppt.notes
         } : undefined,
-
-        // Include these optional fields to satisfy the strict type check
         painTrend: painTrend.length > 0 ? painTrend : [0],
         checkIns: userSymptoms.slice(0, 3).map(s => ({
           date: new Date(s.timestamp).toLocaleDateString(),
           painLevel: s.painlvl,
           symptoms: s.symptoms ? s.symptoms.split(',') : [],
           note: s.description || "",
-          risk: s.painlvl >= 8 ? "high" : "low"
+          risk: s.risk_level || (s.painlvl >= 8 ? "High" : "Low"), 
+          aiExplanation: s.ai_explanation 
         }))
     };
   });
 }
 
-// 3. Fetch Single Patient (For Profile Page)
+// 3. Fetch Single Patient (Fixed: STRICT Dynamic Risk)
 export async function getPatientById(id: string): Promise<Patient | null> {
   const { data: { user: currentUser } } = await supabase.auth.getUser();
   if (!currentUser) return null;
 
   const { data: user, error } = await supabase
     .from('users')
-    .select(`
-      id, name, email,
-      patient_profiles!patient_profiles_user_id_fkey (*)
-    `)
+    .select(`id, name, email, avatar_url, patient_profiles!patient_profiles_user_id_fkey (*)`)
     .eq('id', id)
     .single();
 
@@ -139,11 +147,40 @@ export async function getPatientById(id: string): Promise<Patient | null> {
     .eq('doctor_id', currentUser.id)
     .single();
 
-  const { data: symptoms } = await supabase.from('symptoms').select('*').eq('user_id', id).order('timestamp', { ascending: false }).limit(10);
-  const { data: appointments } = await supabase.from('appointments').select('*').eq('patient_id', id).eq('status', 'Confirmed').gte('date', new Date().toISOString()).order('date', { ascending: true }).limit(1);
+  const { data: symptoms } = await supabase
+    .from('symptoms')
+    .select('*')
+    .eq('user_id', id)
+    .order('timestamp', { ascending: false })
+    .limit(10);
+
+  const { data: appointments } = await supabase
+    .from('appointments')
+    .select('*')
+    .eq('patient_id', id)
+    .eq('status', 'Confirmed')
+    .gte('date', new Date().toISOString())
+    .order('date', { ascending: true })
+    .limit(1);
 
   const profileData: any = user.patient_profiles;
   const profile = Array.isArray(profileData) ? profileData[0] : profileData;
+  
+  // --- FIXED DYNAMIC RISK LOGIC ---
+  const latestSymptom = symptoms?.[0];
+  let calculatedRisk = profile?.risk_level || 'Low'; // Fallback
+  
+  if (latestSymptom) {
+      if (latestSymptom.risk_level === 'High' || latestSymptom.painlvl >= 8) {
+          calculatedRisk = 'High';
+      } else if (latestSymptom.risk_level === 'Moderate' || latestSymptom.painlvl >= 5) {
+          calculatedRisk = 'Moderate';
+      } else {
+          // Force Low if symptom is Low
+          calculatedRisk = 'Low';
+      }
+  }
+
   const painTrend = symptoms?.map(s => s.painlvl).slice(0, 7).reverse() || [0];
   const nextAppt = appointments && appointments.length > 0 ? appointments[0] : null;
 
@@ -152,37 +189,40 @@ export async function getPatientById(id: string): Promise<Patient | null> {
     name: user.name,
     age: profile?.age || 0,
     condition: profile?.condition || "General Checkup",
-    // FIX: Renamed 'risk' to 'risk_level'
-    risk_level: (profile?.risk_level === 'High' || profile?.risk_level === 'Moderate') ? profile.risk_level : 'Low',
+    
+    // Use strictly calculated risk
+    risk_level: calculatedRisk,
+    
     status: profile?.status || "Active",
     trend: profile?.trend || 'stable',
-    avatar: `https://ui-avatars.com/api/?name=${user.name}&background=random`, // Avatar fallback
-    
-    // Note: privateNotes is returned but not in the Interface. 
-    // You can add it to the interface if you need to use it in components.
-    
+    avatar: user.avatar_url || `https://ui-avatars.com/api/?name=${user.name}&background=random`,
     appointment: nextAppt ? {
         id: nextAppt.id,
         date: nextAppt.date,
         type: nextAppt.type,
-        status: nextAppt.status as any,
+        status: nextAppt.status,
         notes: nextAppt.notes
     } : undefined,
     painTrend: painTrend.length > 0 ? painTrend : [0],
     checkIns: symptoms?.slice(0, 5).map(s => ({
+        id: s.id,
         date: new Date(s.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
         time: new Date(s.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute:'2-digit', timeZone: 'Asia/Kolkata' }),
         painLevel: s.painlvl,
         symptoms: s.symptoms ? s.symptoms.split(',') : [],
         note: s.description || "No notes provided.",
-        risk: s.painlvl >= 8 ? "high" : "low"
+        risk: s.risk_level || (s.painlvl >= 8 ? "High" : "Low"), 
+        aiExplanation: s.ai_explanation 
     })) || []
   };
 }
 
-// 4. Fetch Pending Appointments
+// ... (Keep existing functions below: getPendingAppointments, etc.) ...
+// (Make sure to export all of them properly!)
+
 export async function getPendingAppointments() {
-  const { data, error } = await supabase
+    // ... (Your existing code)
+    const { data, error } = await supabase
     .from('appointments')
     .select(`
       id, date, type, notes, status,
@@ -191,10 +231,7 @@ export async function getPendingAppointments() {
     .eq('status', 'Pending') 
     .order('date', { ascending: true });
 
-  if (error) {
-    console.error("Error fetching pending appointments:", error);
-    return [];
-  }
+  if (error) return [];
 
   return data.map(appt => {
     const user: any = appt.users;
@@ -209,7 +246,6 @@ export async function getPendingAppointments() {
   });
 }
 
-// 5. Fetch Appointment History
 export async function getAppointmentHistory() {
   const { data, error } = await supabase
     .from('appointments')
@@ -220,10 +256,7 @@ export async function getAppointmentHistory() {
     .in('status', ['Completed', 'Cancelled'])
     .order('date', { ascending: false });
 
-  if (error) {
-    console.error("Error fetching history:", error);
-    return [];
-  }
+  if (error) return [];
 
   return data.map(appt => {
     const user: any = appt.users;
@@ -238,7 +271,6 @@ export async function getAppointmentHistory() {
   });
 }
 
-// 6. Fetch Doctor Profile
 export async function getDoctorProfile() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -252,10 +284,7 @@ export async function getDoctorProfile() {
     .eq('id', user.id)
     .single();
 
-  if (error || !data) {
-     console.error("Error fetching doctor profile:", error);
-     return null;
-  }
+  if (error || !data) return null;
 
   const profile: any = data.doctor_profiles; 
   const docProfile = Array.isArray(profile) ? profile[0] : profile;
@@ -281,12 +310,10 @@ export async function getDoctorProfile() {
   };
 }
 
-// 7. Update Doctor Profile
 export async function updateDoctorProfile(profileData: any) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not logged in" };
 
-  // Update Users Table
   const userData = {
     name: profileData.name,
     phone_number: profileData.phone 
@@ -299,7 +326,6 @@ export async function updateDoctorProfile(profileData: any) {
 
   if (userError) return { error: userError.message };
   
-  // Update Doctor Profiles Table
   const doctorData = {
     job_title: profileData.role,           
     experience: profileData.experience,
@@ -327,7 +353,6 @@ export async function updateDoctorProfile(profileData: any) {
   return { success: true };
 }
 
-// 8. Complete Onboarding
 export async function completeOnboarding(data: {
   phone: string;
   gender: string;
@@ -373,7 +398,6 @@ export async function completeOnboarding(data: {
   return { success: true };
 }
 
-// 9. Update Appointment Status
 export async function updateAppointmentStatus(id: string, status: 'Confirmed' | 'Cancelled') {
   const { error } = await supabase
     .from('appointments')
@@ -387,7 +411,6 @@ export async function updateAppointmentStatus(id: string, status: 'Confirmed' | 
   return { success: true };
 }
 
-// 10. Reschedule Appointment
 export async function rescheduleAppointment(id: string, newDate: string, status: 'Pending' | 'Confirmed' = 'Pending') {
   const { error } = await supabase
     .from('appointments')
@@ -404,7 +427,6 @@ export async function rescheduleAppointment(id: string, newDate: string, status:
   return { success: true };
 }
 
-// 11. Save Doctor's Private Notes
 export async function savePatientNotes(patientId: string, notes: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
@@ -425,7 +447,6 @@ export async function savePatientNotes(patientId: string, notes: string) {
   return { success: true };
 }
 
-// 12. Fetch Confirmed Upcoming Appointments
 export async function getUpcomingAppointments() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
@@ -441,10 +462,7 @@ export async function getUpcomingAppointments() {
     .gte('date', new Date().toISOString()) 
     .order('date', { ascending: true });
 
-  if (error) {
-    console.error("Error fetching upcoming appointments:", error);
-    return [];
-  }
+  if (error) return [];
 
   return data.map(appt => {
     const user: any = appt.users;
@@ -460,7 +478,6 @@ export async function getUpcomingAppointments() {
   });
 }
 
-// 13. Fetch Recent Check-Ins
 export async function getRecentSymptoms() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
@@ -477,7 +494,7 @@ export async function getRecentSymptoms() {
   const { data, error } = await supabase
     .from('symptoms')
     .select(`
-      id, symptoms, painlvl, timestamp, description,
+      id, symptoms, painlvl, timestamp, description, risk_level, ai_explanation,
       users!symptoms_user_id_fkey (name, avatar_url)
     `)
     .in('user_id', patientIds)
@@ -495,7 +512,9 @@ export async function getRecentSymptoms() {
       symptom: s.symptoms,
       painLevel: s.painlvl,
       timestamp: s.timestamp,
-      description: s.description
+      description: s.description,
+      riskLevel: s.risk_level, 
+      aiExplanation: s.ai_explanation
     };
   });
 }

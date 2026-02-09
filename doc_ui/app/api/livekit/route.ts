@@ -2,7 +2,6 @@ import { AccessToken } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  // 1. Parse Query Parameters (e.g. ?room=123&username=Dr.Smith)
   const room = req.nextUrl.searchParams.get("room");
   const username = req.nextUrl.searchParams.get("username");
 
@@ -13,7 +12,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 2. Load Keys from .env.local
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
@@ -25,19 +23,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 3. Create a Token
-  // This tells LiveKit: "This user is allowed to join THIS specific room"
+  // Create Token
   const at = new AccessToken(apiKey, apiSecret, { identity: username });
 
-  // Grant permissions (can publish video, hear audio, join room)
-  at.addGrant({
-    roomJoin: true,
-    room: room,
-    canPublish: true,   // Allow sending video/audio
-    canSubscribe: true, // Allow seeing others
-    canPublishData: true // Allow chat/data messages
+  // Grant Permissions (Allow Video, Audio, Chat, and Joining)
+  at.addGrant({ 
+    roomJoin: true, 
+    room: room, 
+    canPublish: true, 
+    canSubscribe: true,
+    canPublishData: true 
   });
-  
-  // 4. Return the Token to the Client
+
   return NextResponse.json({ token: await at.toJwt() });
 }

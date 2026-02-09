@@ -16,8 +16,11 @@ export default function DashboardPatientList({ patients }: { patients: Patient[]
       case "risk":
         // Sort by Risk (High first), then by Name
         const riskScore = (r: string) => r === 'High' ? 3 : r === 'Moderate' ? 2 : 1;
-        const scoreA = riskScore(a.risk_level || a.risk || 'Low');
-        const scoreB = riskScore(b.risk_level || b.risk || 'Low');
+        
+        // FIX: Removed 'a.risk' and 'b.risk' because they don't exist on the type.
+        // We now rely solely on 'risk_level'.
+        const scoreA = riskScore(a.risk_level || 'Low');
+        const scoreB = riskScore(b.risk_level || 'Low');
         
         if (scoreA !== scoreB) return scoreB - scoreA; // High to Low
         return a.name.localeCompare(b.name);

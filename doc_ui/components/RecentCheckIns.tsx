@@ -1,54 +1,78 @@
+"use client";
+
+import { Activity, BrainCircuit } from "lucide-react"; // Added BrainCircuit icon for AI
+
 export default function RecentCheckIns({ checkIns }: { checkIns: any[] }) {
-  if (!checkIns || checkIns.length === 0) {
+  if (checkIns.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center text-slate-500">
-        <h3 className="font-bold text-slate-900 mb-2">Recent Check-ins</h3>
-        <p className="text-sm">No recent check-ins found.</p>
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <h3 className="text-lg font-bold text-slate-900 mb-4">Recent Activity</h3>
+        <p className="text-slate-500 text-sm text-center py-4">No recent symptom logs.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-      <h3 className="font-bold text-slate-900 mb-4">Recent Check-ins</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-bold text-slate-900">Patient Updates</h3>
+        <span className="text-xs font-medium px-2 py-1 bg-blue-50 text-blue-700 rounded-full">Live Feed</span>
+      </div>
+      
       <div className="space-y-6">
-        {checkIns.map((checkIn, index) => (
-          <div key={index} className="relative pl-6 border-l-2 border-slate-100 last:border-0 pb-1">
-            <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-white ${
-                checkIn.painLevel >= 8 ? "bg-red-500" : 
-                checkIn.painLevel >= 5 ? "bg-amber-500" : "bg-emerald-500"
-            }`}></div>
-            
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-sm font-semibold text-slate-900">{checkIn.date}</span>
-              <span className="text-xs text-slate-400">{checkIn.time}</span>
-            </div>
-            
-            <div className="flex items-center gap-2 mb-2">
-               <span className="text-xs font-bold uppercase text-slate-500">Pain:</span>
-               <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                   checkIn.painLevel >= 8 ? "bg-red-100 text-red-700" : 
-                   checkIn.painLevel >= 5 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-               }`}>
-                  {checkIn.painLevel}/10
-               </span>
-            </div>
+        {checkIns.map((log) => {
+          const date = new Date(log.timestamp);
+          const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const isToday = date.toDateString() === new Date().toDateString();
 
-            <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">
-              "{checkIn.note}"
-            </p>
-            
-            {checkIn.symptoms && checkIn.symptoms.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                    {checkIn.symptoms.map((s: string, i: number) => (
-                        <span key={i} className="text-[10px] font-medium bg-white border border-slate-200 text-slate-500 px-2 py-1 rounded-full uppercase tracking-wide">
-                            {s.trim()}
-                        </span>
-                    ))}
+          // Risk Logic (from AI or Pain Level)
+          const risk = log.riskLevel || (log.painLevel >= 8 ? 'High' : log.painLevel >= 5 ? 'Moderate' : 'Low');
+          const riskColor = 
+             risk === 'High' ? 'bg-red-100 text-red-700 border-red-200' : 
+             risk === 'Moderate' ? 'bg-amber-100 text-amber-700 border-amber-200' : 
+             'bg-emerald-100 text-emerald-700 border-emerald-200';
+
+          return (
+            <div key={log.id} className="relative pl-6 border-l-2 border-slate-100 last:border-0 pb-2">
+              {/* Timeline Dot */}
+              <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white ${
+                 risk === 'High' ? 'bg-red-500' : 'bg-blue-500'
+              }`}></div>
+
+              <div className="flex justify-between items-start mb-1">
+                <div className="flex items-center gap-2">
+                   <span className="font-bold text-slate-900 text-sm">{log.patientName}</span>
+                   <span className={`text-[10px] px-1.5 py-0.5 rounded border ${riskColor} font-bold uppercase`}>
+                      {risk}
+                   </span>
                 </div>
-            )}
-          </div>
-        ))}
+                <span className="text-xs text-slate-400 font-medium">
+                  {isToday ? timeStr : date.toLocaleDateString()}
+                </span>
+              </div>
+
+              <div className="mb-2">
+                 <p className="text-xs text-slate-500">
+                    reported <span className="font-medium text-slate-700">{log.symptom}</span> 
+                    &nbsp;with pain level <span className="font-bold">{log.painLevel}/10</span>.
+                 </p>
+              </div>
+
+              {/* AI Explanation Box */}
+              {log.aiExplanation && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mt-2 flex gap-3">
+                   <BrainCircuit className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+                   <div>
+                      <p className="text-[10px] font-bold text-purple-700 uppercase mb-0.5">AI Analysis</p>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {log.aiExplanation}
+                      </p>
+                   </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

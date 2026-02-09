@@ -3,7 +3,6 @@
 import "@livekit/components-styles";
 import {
   LiveKitRoom,
-  VideoConference,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
@@ -11,46 +10,57 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function ConsultationPage() {
   const params = useParams();
-  const id = params.id as string;
+  const roomId = params.id as string;
   const router = useRouter();
 
   const [token, setToken] = useState("");
+  const hasFetched = useRef(false); // prevents double API call in dev
 
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     (async () => {
       try {
-        // 1. Get Logged-In User Name
+        // 1️⃣ Get logged-in user
         const { data: { user } } = await supabase.auth.getUser();
-        let username = "Doctor";
-        
-        if (user) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('name')
-            .eq('id', user.id)
-            .single();
-          if (profile?.name) username = profile.name;
+        if (!user) {
+          router.push("/login");
+          return;
         }
 
-        // 2. Fetch Token from our API
+        // 2️⃣ Fetch real name from DB
+        const { data: profile } = await supabase
+          .from("users")
+          .select("name")
+          .eq("id", user.id)
+          .single();
+
+        const username = profile?.name || "Doctor";
+
+        // 3️⃣ Get LiveKit token from API
         const resp = await fetch(
-          `/api/livekit?room=${id}&username=${encodeURIComponent(username)}`
+          `/api/livekit?room=${roomId}&username=${encodeURIComponent(username)}`
         );
+
+        if (!resp.ok) throw new Error("Token fetch failed");
+
         const data = await resp.json();
         setToken(data.token);
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.error("LiveKit connection failed:", err);
+        router.push("/dashboard");
       }
     })();
-  }, [id]);
+  }, [roomId, router]);
 
-  if (token === "") {
+  if (!token) {
     return (
       <div className="flex h-[calc(100vh-6rem)] items-center justify-center flex-col gap-4">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -61,29 +71,30 @@ export default function ConsultationPage() {
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl relative">
-       {/* Header Overlay */}
-       <div className="absolute top-4 left-4 z-10 flex items-center gap-4">
-         <div className="px-4 py-2 bg-slate-800/80 backdrop-blur-md rounded-lg border border-slate-700 text-white shadow-lg">
-            <h1 className="text-sm font-bold">Room: {id.slice(0, 8)}...</h1>
-         </div>
-       </div>
+      
+      {/* Room Badge */}
+      <div className="absolute top-4 left-4 z-10 px-4 py-2 bg-slate-800/80 backdrop-blur-md rounded-lg border border-slate-700 text-white">
+        Room: {roomId.slice(0, 8)}...
+      </div>
 
-       <div className="absolute top-4 right-4 z-10">
-        <button 
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-red-500/90 hover:bg-red-600 backdrop-blur-md text-white text-sm font-bold rounded-lg shadow-lg transition-all"
+      {/* End Call Button */}
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg"
         >
           End Call
         </button>
       </div>
 
       <LiveKitRoom
-        video={true}
-        audio={true}
+        video
+        audio
         token={token}
         serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
         data-lk-theme="default"
-        style={{ height: '100%' }}
+        style={{ height: "100%" }}
+        onDisconnected={() => router.push("/dashboard")} // ← from file 2
       >
         <MyVideoConference />
         <RoomAudioRenderer />
@@ -99,10 +110,11 @@ function MyVideoConference() {
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
-    { onlySubscribed: false },
+    { onlySubscribed: false }
   );
+
   return (
-    <GridLayout tracks={tracks} style={{ height: 'calc(100% - var(--lk-control-bar-height))' }}>
+    <GridLayout tracks={tracks} style={{ height: "calc(100% - var(--lk-control-bar-height))" }}>
       <ParticipantTile />
     </GridLayout>
   );
